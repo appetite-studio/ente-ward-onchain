@@ -1,21 +1,56 @@
-# 🏗 Scaffold-ETH 2
+# 🏛️ Ente Ward: Power To The People
 
 <h4 align="center">
-  <a href="https://docs.scaffoldeth.io">Documentation</a> |
-  <a href="https://scaffoldeth.io">Website</a>
+  <a href="#features">Features</a> |
+  <a href="#smart-contract">Smart Contract</a> |
+  <a href="#quickstart">Quickstart</a> |
+  <a href="#deployment">Deployment</a>
 </h4>
 
-🧪 An open-source, up-to-date toolkit for building decentralized applications (dapps) on the Ethereum blockchain. It's designed to make it easier for developers to create and deploy smart contracts and build user interfaces that interact with those contracts.
+🌟 A blockchain-powered platform that bridges the communication gap between citizens and their local representatives through transparent, immutable project tracking and community engagement.
 
-⚙️ Built using NextJS, RainbowKit, Hardhat, Wagmi, Viem, and Typescript.
+⚡ Built using NextJS, RainbowKit, Hardhat, Wagmi, Viem, and Typescript on Scaffold-ETH 2.
 
-- ✅ **Contract Hot Reload**: Your frontend auto-adapts to your smart contract as you edit it.
-- 🪝 **[Custom hooks](https://docs.scaffoldeth.io/hooks/)**: Collection of React hooks wrapper around [wagmi](https://wagmi.sh/) to simplify interactions with smart contracts with typescript autocompletion.
-- 🧱 [**Components**](https://docs.scaffoldeth.io/components/): Collection of common web3 components to quickly build your frontend.
-- 🔥 **Burner Wallet & Local Faucet**: Quickly test your application with a burner wallet and local faucet.
-- 🔐 **Integration with Wallet Providers**: Connect to different wallet providers and interact with the Ethereum network.
+## Why Ente Ward?
 
-![Debug Contracts tab](https://github.com/scaffold-eth/scaffold-eth-2/assets/55535804/b237af0c-5027-4849-a5c1-2e31495cccb1)
+We believe that effective and transparent communication is crucial for community development. Ente ward empowers residents to voice concerns, track project progress, and actively participate in neighborhood improvement while ensuring unprecedented transparency through blockchain technology.
+
+## 🚀 Features
+
+- **📋 Project Management**: Create, track, and update community projects with immutable blockchain records
+- **🔒 Transparent Governance**: Blockchain-secured project documentation prevents tampering and corruption
+- **📊 Status Tracking**: Real-time project status updates (Upcoming → Ongoing → Completed/Cancelled)
+- **📝 Immutable Reports**: Mandatory completion reports for finished projects
+- **🚫 Non-Transferable**: Project NFTs remain permanently with local representatives
+- **📱 Community Engagement**: Platform for reporting issues, donations, and local news
+
+## 🔗 Smart Contract
+
+### EntewardProject Contract
+
+An ERC721-based smart contract that represents each community project as a non-transferable NFT:
+
+**Key Features:**
+- **Project Status Management**: Enforced workflow transitions
+- **Immutable Records**: Proposal and report URIs stored on-chain
+- **Access Control**: Only contract owner can create/update projects
+- **Gas Optimized**: Custom errors and efficient data structures
+- **Transfer Prevention**: Projects cannot be moved or sold
+
+**Contract Functions:**
+```solidity
+// Create new project
+function safeMint(string proposalURI) external onlyOwner returns (uint256)
+
+// Update project status with optional report
+function updateStatus(uint256 tokenId, ProjectStatus newStatus, string reportURI) external onlyOwner
+
+// Get paginated projects (newest first)
+function getProjects(uint256 projectsPerPage, uint256 page) external view
+
+// Get specific project details
+function getProject(uint256 tokenId) external view returns (ProjectStatus, string, string)
+```
 
 ## Requirements
 
@@ -27,54 +62,116 @@ Before you begin, you need to install the following tools:
 
 ## Quickstart
 
-To get started with Scaffold-ETH 2, follow the steps below:
+To get started with Ente Ward development:
 
-1. Install dependencies if it was skipped in CLI:
-
-```
-cd my-dapp-example
+1. **Install dependencies:**
+```bash
 yarn install
 ```
 
-2. Run a local network in the first terminal:
-
-```
+2. **Start local blockchain:**
+```bash
 yarn chain
 ```
 
-This command starts a local Ethereum network using Hardhat. The network runs on your local machine and can be used for testing and development. You can customize the network configuration in `packages/hardhat/hardhat.config.ts`.
-
-3. On a second terminal, deploy the test contract:
-
-```
+3. **Deploy the EntewardProject contract:**
+```bash
 yarn deploy
 ```
+*You'll be prompted to enter the initial owner address for the contract*
 
-This command deploys a test smart contract to the local network. The contract is located in `packages/hardhat/contracts` and can be modified to suit your needs. The `yarn deploy` command uses the deploy script located in `packages/hardhat/deploy` to deploy the contract to the network. You can also customize the deploy script.
-
-4. On a third terminal, start your NextJS app:
-
-```
+4. **Start the frontend:**
+```bash
 yarn start
 ```
 
-Visit your app on: `http://localhost:3000`. You can interact with your smart contract using the `Debug Contracts` page. You can tweak the app config in `packages/nextjs/scaffold.config.ts`.
+Visit your app on: `http://localhost:3000`
 
-Run smart contract test with `yarn hardhat:test`
+## 🚀 Deployment
 
-- Edit your smart contracts in `packages/hardhat/contracts`
-- Edit your frontend homepage at `packages/nextjs/app/page.tsx`. For guidance on [routing](https://nextjs.org/docs/app/building-your-application/routing/defining-routes) and configuring [pages/layouts](https://nextjs.org/docs/app/building-your-application/routing/pages-and-layouts) checkout the Next.js documentation.
-- Edit your deployment scripts in `packages/hardhat/deploy`
+### Local Development
+```bash
+# Deploy to local hardhat network
+yarn deploy
 
+# Deploy to specific network
+yarn deploy --network sepolia
+```
 
-## Documentation
+### Production Deployment
 
-Visit our [docs](https://docs.scaffoldeth.io) to learn how to start building with Scaffold-ETH 2.
+1. **Configure Network**: Update `packages/hardhat/hardhat.config.ts` with your network settings
+2. **Set Private Key**: Add your deployer private key to environment variables
+3. **Deploy Contract**: Run deployment script with network flag
+4. **Verify Contract**: Submit source code to block explorer for transparency
 
-To know more about its features, check out our [website](https://scaffoldeth.io).
+**Interactive Deployment:**
+The deploy script will prompt you for:
+- Initial owner address (local representative's wallet)
+- Confirmation of address before deployment
+- Network verification and gas estimation
 
-## Contributing to Scaffold-ETH 2
+## 🧪 Testing
 
-We welcome contributions to Scaffold-ETH 2!
+Run the smart contract test suite:
+```bash
+yarn hardhat:test
+```
 
-Please see [CONTRIBUTING.MD](https://github.com/scaffold-eth/scaffold-eth-2/blob/main/CONTRIBUTING.md) for more information and guidelines for contributing to Scaffold-ETH 2.
+Test contract functions using the Debug Contracts page at `http://localhost:3000/debug`
+
+## 📁 Project Structure
+
+```
+packages/
+├── hardhat/
+│   ├── contracts/
+│   │   └── EntewardProject.sol    # Main project contract
+│   ├── deploy/
+│   │   └── 00_deploy_enteward.ts  # Interactive deployment script
+│   └── test/                      # Contract tests
+├── nextjs/
+│   ├── app/
+│   │   └── page.tsx              # Frontend homepage
+│   └── scaffold.config.ts        # App configuration
+```
+
+## 🔧 Development
+
+- **Edit Smart Contracts**: `packages/hardhat/contracts/`
+- **Edit Frontend**: `packages/nextjs/app/`
+- **Edit Deployment Scripts**: `packages/hardhat/deploy/`
+- **Configure App**: `packages/nextjs/scaffold.config.ts`
+
+## 🌍 Why Blockchain?
+
+**Transparency**: All project records are publicly verifiable and cannot be altered
+**Accountability**: Immutable audit trail of all project decisions and outcomes
+**Trust**: Reduces corruption through permanent, tamper-proof documentation
+**Community Engagement**: Citizens can independently verify project progress and spending
+
+## 🛡️ Security Features
+
+- **Access Control**: Only authorized representatives can manage projects
+- **Input Validation**: Comprehensive checks prevent invalid data
+- **Status Enforcement**: Projects follow strict lifecycle rules
+- **Transfer Prevention**: Projects remain permanently with representatives
+- **Gas Optimization**: Efficient operations reduce transaction costs
+
+## 🤝 Contributing
+
+We welcome contributions to Ente Ward! Whether it's:
+- 🐛 Bug fixes
+- ✨ New features
+- 📚 Documentation improvements
+- 🧪 Additional tests
+
+Please ensure your contributions align with our mission of transparent, accountable local governance.
+
+## 📄 License
+
+This project is built on Scaffold-ETH 2 and follows the same open-source principles for community development and transparency.
+
+---
+
+**Ente Ward.** Built at appetite.studio

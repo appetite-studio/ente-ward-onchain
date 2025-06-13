@@ -1,14 +1,47 @@
 import { HardhatRuntimeEnvironment } from "hardhat/types";
 import { DeployFunction } from "hardhat-deploy/types";
-import { Contract } from "ethers";
+import * as readline from "readline";
 
 /**
- * Deploys a contract named "YourContract" using the deployer account and
- * constructor arguments set to the deployer address
+ * Prompts user for input via command line
+ * @param question The question to ask the user
+ * @returns Promise resolving to user's input
+ */
+function askQuestion(question: string): Promise<string> {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  return new Promise(resolve => {
+    rl.question(question, answer => {
+      rl.close();
+      resolve(answer.trim());
+    });
+  });
+}
+
+/**
+ * Validates if a string is a valid Ethereum address
+ * @param address The address to validate
+ * @returns boolean indicating if address is valid
+ */
+function isValidAddress(address: string): boolean {
+  try {
+    // Use Hardhat's ethers which is available in the runtime environment
+    return /^0x[a-fA-F0-9]{40}$/.test(address);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Deploys a contract named "EntewardProject" using the deployer account and
+ * constructor arguments set to the provided initial owner address
  *
  * @param hre HardhatRuntimeEnvironment object.
  */
-const deployYourContract: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
+const deployEntewardProject: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   /*
     On localhost, the deployer account is the one that comes with Hardhat, which is already funded.
 
@@ -22,23 +55,82 @@ const deployYourContract: DeployFunction = async function (hre: HardhatRuntimeEn
   const { deployer } = await hre.getNamedAccounts();
   const { deploy } = hre.deployments;
 
-  await deploy("YourContract", {
+  console.log("🚀 Deploying EntewardProject contract...");
+  console.log(`📡 Network: ${hre.network.name}`);
+  console.log(`👤 Deployer: ${deployer}`);
+  console.log();
+
+  // Get initial owner address from user input
+  let initialOwner = "";
+
+  while (!initialOwner) {
+    const userInput = await askQuestion(`🔑 Enter the initial owner address for the EntewardProject contract: `);
+
+    if (!userInput) {
+      console.log("❌ Address cannot be empty. Please try again.\n");
+      continue;
+    }
+
+    if (!isValidAddress(userInput)) {
+      console.log("❌ Invalid Ethereum address format. Please try again.\n");
+      continue;
+    }
+
+    // Confirm the address
+    console.log(`\n📋 Initial Owner: ${userInput}`);
+    const confirmation = await askQuestion("✅ Is this correct? (y/n): ");
+
+    if (confirmation.toLowerCase() === "y" || confirmation.toLowerCase() === "yes") {
+      initialOwner = userInput;
+      console.log();
+    } else {
+      console.log("🔄 Let's try again...\n");
+    }
+  }
+
+  console.log("⏳ Deploying contract...");
+
+  const deployResult = await deploy("EntewardProject", {
     from: deployer,
     // Contract constructor arguments
-    args: [deployer],
+    args: [initialOwner],
     log: true,
     // autoMine: can be passed to the deploy function to make the deployment process faster on local networks by
     // automatically mining the contract deployment transaction. There is no effect on live networks.
     autoMine: true,
   });
 
-  // Get the deployed contract to interact with it after deploying.
-  const yourContract = await hre.ethers.getContract<Contract>("YourContract", deployer);
-  console.log("👋 Initial greeting:", await yourContract.greeting());
+  if (deployResult.newlyDeployed) {
+    console.log();
+    console.log("🎉 EntewardProject deployed successfully!");
+    console.log(`📄 Contract Address: ${deployResult.address}`);
+    console.log(`🔑 Initial Owner: ${initialOwner}`);
+    console.log(`⛽ Gas Used: ${deployResult.receipt?.gasUsed?.toString() || "N/A"}`);
+
+    // Note: Gas price info may not be available in hardhat-deploy receipt
+    // For accurate cost calculation, you'd need to query the transaction separately
+    console.log(`💰 Deploy Cost: Check transaction hash on block explorer for exact cost`);
+
+    if (hre.network.name !== "hardhat" && hre.network.name !== "localhost") {
+      console.log();
+      console.log("📝 Next steps:");
+      console.log("1. Verify the contract on the block explorer");
+      console.log("2. Update your frontend with the new contract address");
+      console.log("3. Test the contract functionality");
+      console.log(`4. Save the contract address: ${deployResult.address}`);
+    }
+  } else {
+    console.log("ℹ️  Contract already deployed at:", deployResult.address);
+  }
+
+  // Optional: Get the deployed contract instance for testing
+  // const entewardProject = await hre.ethers.getContract("EntewardProject", deployer);
+  // const contractOwner = await entewardProject.owner();
+  // console.log("✅ Contract owner verification:", contractOwner === initialOwner ? "PASSED" : "FAILED");
 };
 
-export default deployYourContract;
+export default deployEntewardProject;
 
 // Tags are useful if you have multiple deploy files and only want to run one of them.
-// e.g. yarn deploy --tags YourContract
-deployYourContract.tags = ["YourContract"];
+// e.g. yarn deploy --tags EntewardProject
+deployEntewardProject.tags = ["EntewardProject"];
