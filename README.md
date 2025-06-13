@@ -1,4 +1,5 @@
-# 🏛️ Ente Ward: Power To The People
+<h1 align="center"> 🏛️ Ente Ward </h1>
+<p align="center">Power to the people. <a target="_blank" href="https://enteward.app">enteward.app</a></p>
 
 <h4 align="center">
   <a href="#features">Features</a> |
