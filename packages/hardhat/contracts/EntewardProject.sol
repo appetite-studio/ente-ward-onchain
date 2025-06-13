@@ -2,8 +2,8 @@
 // Compatible with OpenZeppelin Contracts ^5.0.0
 pragma solidity >=0.8.0 <0.9.0;
 
-import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import { ERC721 } from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 
 /**
  * @title EntewardProject
@@ -14,7 +14,7 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 contract EntewardProject is ERC721, Ownable {
     /// @dev Contract version for tracking deployments
     string public constant VERSION = "0.1.0";
-    
+
     /// @dev Counter for generating unique token IDs, starts at 0
     uint256 private _nextTokenId;
 
@@ -23,10 +23,10 @@ contract EntewardProject is ERC721, Ownable {
      * @notice Status transitions are restricted to prevent invalid state changes
      */
     enum ProjectStatus {
-        Upcoming,   // 0: Project proposed but not started yet
-        Ongoing,    // 1: Project is currently in progress
-        Cancelled,  // 2: Project has been cancelled (terminal state)
-        Completed   // 3: Project has been finished with report (terminal state)
+        Upcoming, // 0: Project proposed but not started yet
+        Ongoing, // 1: Project is currently in progress
+        Cancelled, // 2: Project has been cancelled (terminal state)
+        Completed // 3: Project has been finished with report (terminal state)
     }
 
     /**
@@ -80,10 +80,7 @@ contract EntewardProject is ERC721, Ownable {
      * @dev Constructor initializes the ERC721 token and sets the initial owner
      * @param initialOwner Address that will own the contract and can mint/update projects
      */
-    constructor(address initialOwner)
-        ERC721("EntewardProject", "EP")
-        Ownable(initialOwner)
-    {}
+    constructor(address initialOwner) ERC721("EntewardProject", "EP") Ownable(initialOwner) {}
 
     /**
      * @dev Creates a new project NFT with the specified proposal
@@ -93,21 +90,13 @@ contract EntewardProject is ERC721, Ownable {
      * @notice Projects are minted to the contract owner and cannot be transferred
      * @notice Projects start with "Upcoming" status by default
      */
-    function safeMint(string calldata proposalURI)
-        external
-        onlyOwner
-        returns (uint256 tokenId)
-    {
+    function safeMint(string calldata proposalURI) external onlyOwner returns (uint256 tokenId) {
         if (bytes(proposalURI).length == 0) revert EmptyProposalURI();
-        
+
         tokenId = _nextTokenId++;
         _safeMint(owner(), tokenId);
-        
-        projects[tokenId] = Project({
-            status: ProjectStatus.Upcoming,
-            proposalURI: proposalURI,
-            reportURI: ""
-        });
+
+        projects[tokenId] = Project({ status: ProjectStatus.Upcoming, proposalURI: proposalURI, reportURI: "" });
 
         emit ProjectCreated(tokenId, proposalURI);
     }
@@ -121,25 +110,22 @@ contract EntewardProject is ERC721, Ownable {
      * @notice Status transitions follow strict rules to maintain data integrity
      * @notice Completed projects must include a report URI
      */
-    function updateStatus(uint256 tokenId, ProjectStatus newStatus, string calldata reportURI) 
-        external 
-        onlyOwner 
-    {
+    function updateStatus(uint256 tokenId, ProjectStatus newStatus, string calldata reportURI) external onlyOwner {
         if (_ownerOf(tokenId) == address(0)) revert ProjectNotFound(tokenId);
-        
+
         Project storage project = projects[tokenId];
-        
+
         if (!_isValidStatusTransition(project.status, newStatus)) {
             revert InvalidStatusTransition(project.status, newStatus);
         }
-        
+
         if (newStatus == ProjectStatus.Completed && bytes(reportURI).length == 0) {
             revert ReportURIRequired();
         }
-        
+
         project.status = newStatus;
         emit ProjectStatusUpdated(tokenId, newStatus);
-        
+
         if (newStatus == ProjectStatus.Completed) {
             project.reportURI = reportURI;
             emit ProjectReportAdded(tokenId, reportURI);
@@ -157,42 +143,45 @@ contract EntewardProject is ERC721, Ownable {
      * @notice Gas-optimized for batch retrieval of project data
      * @notice Returns empty arrays if no projects exist on the requested page
      */
-    function getProjects(uint256 projectsPerPage, uint256 page) 
-        external 
-        view 
+    function getProjects(
+        uint256 projectsPerPage,
+        uint256 page
+    )
+        external
+        view
         returns (
             uint256[] memory tokenIds,
             ProjectStatus[] memory statuses,
             string[] memory proposalURIs,
             string[] memory reportURIs
-        ) 
+        )
     {
         uint256 totalProjects = _nextTokenId;
         if (totalProjects == 0) revert NoProjectsExist();
-        
+
         uint256 startIndex = page * projectsPerPage;
         if (startIndex >= totalProjects) {
             revert PageOutOfBounds(page, (totalProjects - 1) / projectsPerPage);
         }
-        
+
         uint256 endIndex = startIndex + projectsPerPage;
         if (endIndex > totalProjects) {
             endIndex = totalProjects;
         }
-        
+
         uint256 resultLength = endIndex - startIndex;
-        
+
         tokenIds = new uint256[](resultLength);
         statuses = new ProjectStatus[](resultLength);
         proposalURIs = new string[](resultLength);
         reportURIs = new string[](resultLength);
-        
+
         // Fill arrays in descending order (latest projects first)
         unchecked {
             for (uint256 i = 0; i < resultLength; ++i) {
                 uint256 tokenId = totalProjects - 1 - startIndex - i;
                 Project storage project = projects[tokenId];
-                
+
                 tokenIds[i] = tokenId;
                 statuses[i] = project.status;
                 proposalURIs[i] = project.proposalURI;
@@ -209,13 +198,11 @@ contract EntewardProject is ERC721, Ownable {
      * @return reportURI URI containing project completion report (empty if not completed)
      * @notice Reverts if the project does not exist
      */
-    function getProject(uint256 tokenId) 
-        external 
-        view 
-        returns (ProjectStatus status, string memory proposalURI, string memory reportURI) 
-    {
+    function getProject(
+        uint256 tokenId
+    ) external view returns (ProjectStatus status, string memory proposalURI, string memory reportURI) {
         if (_ownerOf(tokenId) == address(0)) revert ProjectNotFound(tokenId);
-        
+
         Project storage project = projects[tokenId];
         return (project.status, project.proposalURI, project.reportURI);
     }
@@ -236,26 +223,25 @@ contract EntewardProject is ERC721, Ownable {
      * @return bool True if the transition is valid, false otherwise
      * @notice Implements business logic for valid project lifecycle transitions
      */
-    function _isValidStatusTransition(ProjectStatus currentStatus, ProjectStatus newStatus) 
-        private 
-        pure 
-        returns (bool) 
-    {
+    function _isValidStatusTransition(
+        ProjectStatus currentStatus,
+        ProjectStatus newStatus
+    ) private pure returns (bool) {
         // Terminal states cannot be changed
         if (currentStatus == ProjectStatus.Cancelled || currentStatus == ProjectStatus.Completed) {
             return false;
         }
-        
+
         // Upcoming projects can only go to Ongoing or Cancelled
         if (currentStatus == ProjectStatus.Upcoming) {
             return newStatus == ProjectStatus.Ongoing || newStatus == ProjectStatus.Cancelled;
         }
-        
+
         // Ongoing projects can only go to Completed or Cancelled
         if (currentStatus == ProjectStatus.Ongoing) {
             return newStatus == ProjectStatus.Completed || newStatus == ProjectStatus.Cancelled;
         }
-        
+
         return false;
     }
 
@@ -264,18 +250,14 @@ contract EntewardProject is ERC721, Ownable {
      * @notice Project NFTs are immutable records and cannot be transferred
      * @notice This ensures project ownership remains with the contract owner
      */
-    function _update(address to, uint256 tokenId, address auth)
-        internal
-        override
-        returns (address)
-    {
+    function _update(address to, uint256 tokenId, address auth) internal override returns (address) {
         address from = _ownerOf(tokenId);
-        
+
         // Allow minting (from == address(0)) but prevent all transfers
         if (from != address(0) && to != address(0)) {
             revert TransfersNotAllowed();
         }
-        
+
         return super._update(to, tokenId, auth);
     }
 
