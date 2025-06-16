@@ -110,15 +110,6 @@ const deployEntewardProject: DeployFunction = async function (hre: HardhatRuntim
     // Note: Gas price info may not be available in hardhat-deploy receipt
     // For accurate cost calculation, you'd need to query the transaction separately
     console.log(`💰 Deploy Cost: Check transaction hash on block explorer for exact cost`);
-
-    if (hre.network.name !== "hardhat" && hre.network.name !== "localhost") {
-      console.log();
-      console.log("📝 Next steps:");
-      console.log("1. Verify the contract on the block explorer");
-      console.log("2. Update your frontend with the new contract address");
-      console.log("3. Test the contract functionality");
-      console.log(`4. Save the contract address: ${deployResult.address}`);
-    }
   } else {
     console.log("ℹ️  Contract already deployed at:", deployResult.address);
   }
