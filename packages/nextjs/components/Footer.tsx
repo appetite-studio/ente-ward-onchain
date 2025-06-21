@@ -5,7 +5,7 @@ import React from "react";
  */
 export const Footer = () => {
   return (
-    <div className="min-h-0 py-5 px-1 mb-11 lg:mb-0">
+    <div className="min-h-0 py-5 px-1 mb-11 lg:mb-0 border-t-2 border-neutral-100">
       <div className="fixed z-10 p-4 bottom-0 right-0 pointer-events-none">
         <a className="btn btn-sm btn-neutral shadow-lg" href="tel:+91 88919 66511">
           Call support<span className="hidden lg:inline">: +91 8891 966 511</span>
