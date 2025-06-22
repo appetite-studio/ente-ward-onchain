@@ -7,6 +7,7 @@ import { AddressQRCodeModal } from "./AddressQRCodeModal";
 import { WrongNetworkDropdown } from "./WrongNetworkDropdown";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { Address } from "viem";
+import { useAccount } from "wagmi";
 import { useNetworkColor } from "~~/hooks/scaffold-eth";
 import { useTargetNetwork } from "~~/hooks/scaffold-eth/useTargetNetwork";
 import { getBlockExplorerAddressLink } from "~~/utils/scaffold-eth";
@@ -17,6 +18,9 @@ import { getBlockExplorerAddressLink } from "~~/utils/scaffold-eth";
 export const RainbowKitCustomConnectButton = () => {
   const networkColor = useNetworkColor();
   const { targetNetwork } = useTargetNetwork();
+  const { isConnecting, isReconnecting } = useAccount();
+
+  const isLoading = isConnecting || isReconnecting;
 
   return (
     <ConnectButton.Custom>
@@ -29,6 +33,16 @@ export const RainbowKitCustomConnectButton = () => {
         return (
           <>
             {(() => {
+              // Show loading state when not mounted or when connecting/reconnecting
+              if (!mounted || isLoading) {
+                return (
+                  <button className="btn btn-primary btn-sm btn-disabled" type="button" disabled={true}>
+                    <span className="loading loading-spinner loading-xs"></span>
+                    Connecting...
+                  </button>
+                );
+              }
+
               if (!connected) {
                 return (
                   <button className="btn btn-primary btn-sm" onClick={openConnectModal} type="button">
