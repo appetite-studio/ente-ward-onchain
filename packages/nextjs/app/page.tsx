@@ -1,11 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
+import CouncillorProfile from "./_components/CoucillorProfile";
 import LoginPage from "./_components/LoginPage";
 import type { NextPage } from "next";
 import { useAccount } from "wagmi";
-import { DocumentPlusIcon } from "@heroicons/react/24/outline";
 
 const Home: NextPage = () => {
   const { address: connectedAddress } = useAccount();
@@ -23,27 +22,16 @@ const Home: NextPage = () => {
   }
 
   return (
-    <>
-      <div>
-        <div className="mt-8 text-center py-10 px-4 space-y-4">
-          <div className="avatar">
-            <div className="ring-primary ring-offset-base-100 w-24 rounded-full ring-2 ring-offset-2">
-              <Image height="100" width="100" src={councillorImage} alt={councillorName} />
-            </div>
-          </div>
-          <div>
-            <h3>Welcome,</h3>
-            <h1>{councillorName}</h1>
-          </div>
-          <div className="w-fit py-2 px-4 mx-auto rounded-full border-2 border-neutral-300">
-            <span className="text-xs lg:text-base">{designation}</span>
-          </div>
-          <button className="mt-4 btn btn-primary">
-            <DocumentPlusIcon className="h-6" /> Add a Project
-          </button>
-        </div>
-      </div>
-    </>
+    <div className="grid lg:grid-cols-2 flex-1">
+      <CouncillorProfile
+        councillorName={councillorName}
+        councillorImage={councillorImage}
+        designation={designation}
+        onAddProject={() => {
+          console.log("Add project clicked");
+        }}
+      />
+    </div>
   );
 };
 
