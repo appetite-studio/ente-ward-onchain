@@ -15,7 +15,7 @@ export default function CouncillorProfile({
   onAddProject,
 }: CouncillorProfileProps) {
   return (
-    <div className="text-center py-10 px-4 border-b-2 lg:border-b-0 lg:border-r-2 border-neutral-100 flex items-center justify-center">
+    <div className="text-center pt-12 pb-8 lg:pb-12 px-4 border-b-2 lg:border-b-0 lg:border-r-2 border-neutral-100 flex items-center justify-center">
       <div className="space-y-4">
         <div className="avatar">
           <div className="ring-primary ring-offset-base-100 w-24 rounded-full ring-2 ring-offset-2">
