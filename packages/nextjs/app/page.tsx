@@ -4,8 +4,10 @@ import { useEffect, useState } from "react";
 import CouncillorProfile from "./_components/CoucillorProfile";
 import LoginPage from "./_components/LoginPage";
 import NotAuthorized from "./_components/NotAuthorized";
+import ProjectProposalForm from "./_components/ProjectProposalForm";
 import type { NextPage } from "next";
 import { useAccount } from "wagmi";
+import LoadingSpinner from "~~/components/LoadingSpinner";
 
 interface Municipality {
   id: number;
@@ -44,6 +46,7 @@ const Home: NextPage = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isProposalFormOpen, setIsProposalFormOpen] = useState(false);
 
   const fetchCouncillorData = async (walletAddress: string) => {
     setIsLoading(true);
@@ -51,7 +54,7 @@ const Home: NextPage = () => {
 
     try {
       const directusCouncillorAPI = `${process.env.NEXT_PUBLIC_DIRECTUS_BASE_URL}/items/councilor_details?filter[wallet_address][_eq]=${walletAddress}&fields=*,ward.*,ward.muncipality.*`;
-      console.log(directusCouncillorAPI);
+
       const response = await fetch(directusCouncillorAPI);
 
       if (!response.ok) {
@@ -75,35 +78,41 @@ const Home: NextPage = () => {
     }
   };
 
+  const handleAddProject = () => {
+    setIsProposalFormOpen(true);
+  };
+
+  const handleProposalSubmit = (metadataLink: string) => {
+    console.log("Project Proposal Metadata IPFS Link:", metadataLink);
+    // You can add additional logic here, such as:
+    // - Store the proposal in your database
+    // - Show a success notification
+    // - Refresh the councillor's project list
+    alert("Project proposal submitted successfully! Check console for IPFS link.");
+  };
+
   useEffect(() => {
     if (connectedAddress) {
       fetchCouncillorData(connectedAddress);
     } else {
+      // Reset state when wallet disconnects
       setCouncillorData(null);
       setIsAuthorized(null);
       setError(null);
     }
   }, [connectedAddress]);
 
+  // No wallet connected
   if (!connectedAddress) {
-    return (
-      <div>
-        <LoginPage />
-      </div>
-    );
+    return <LoginPage />;
   }
 
+  // Loading state
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center flex-1">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-neutral-500 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading...</p>
-        </div>
-      </div>
-    );
+    return <LoadingSpinner message="Loading..." />;
   }
 
+  // Error state
   if (error) {
     return (
       <div className="flex items-center justify-center flex-1">
@@ -121,14 +130,12 @@ const Home: NextPage = () => {
     );
   }
 
+  // Not authorized
   if (isAuthorized === false) {
-    return (
-      <div>
-        <NotAuthorized />
-      </div>
-    );
+    return <NotAuthorized />;
   }
 
+  // Authorized and data loaded
   if (councillorData && isAuthorized) {
     const councillorImageUrl = councillorData.councilorImage
       ? `${process.env.NEXT_PUBLIC_DIRECTUS_BASE_URL}/assets/${councillorData.councilorImage}`
@@ -137,27 +144,27 @@ const Home: NextPage = () => {
     const designation = `${councillorData.ward.ward_name}, ${councillorData.ward.muncipality.name} Municipality`;
 
     return (
-      <div className="grid lg:grid-cols-2 flex-1">
-        <CouncillorProfile
-          councillorName={councillorData.councilorName}
-          councillorImage={councillorImageUrl}
-          designation={designation}
-          onAddProject={() => {
-            console.log("Add project clicked");
-          }}
+      <>
+        <div className="grid lg:grid-cols-2 flex-1">
+          <CouncillorProfile
+            councillorName={councillorData.councilorName}
+            councillorImage={councillorImageUrl}
+            designation={designation}
+            onAddProject={handleAddProject}
+          />
+        </div>
+
+        {/* Project Proposal Form Modal */}
+        <ProjectProposalForm
+          isOpen={isProposalFormOpen}
+          onClose={() => setIsProposalFormOpen(false)}
+          onSubmit={handleProposalSubmit}
         />
-      </div>
+      </>
     );
   }
 
-  return (
-    <div className="flex items-center justify-center flex-1">
-      <div className="text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-        <p className="text-gray-600">Initializing...</p>
-      </div>
-    </div>
-  );
+  return <LoadingSpinner message="Initializing..." />;
 };
 
 export default Home;
