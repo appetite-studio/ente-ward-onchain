@@ -77,7 +77,6 @@ const ProjectProposalForm: React.FC<ProjectProposalFormProps> = ({ isOpen, onClo
   const [errors, setErrors] = useState<
     Partial<ProjectProposalMetadata & { imageFile: string; pdfFile: string; general: string }>
   >({});
-  const [showErrorDetails, setShowErrorDetails] = useState(false);
 
   // Blockchain interaction hooks
   const { writeContract, data: hash, error: writeError, isPending } = useWriteContract();
@@ -641,9 +640,6 @@ const ProjectProposalForm: React.FC<ProjectProposalFormProps> = ({ isOpen, onClo
                 <h3 className="font-bold">Error</h3>
                 <div className="text-xs">{errors.general}</div>
               </div>
-              <button className="btn btn-sm btn-ghost" onClick={() => setShowErrorDetails(!showErrorDetails)}>
-                {showErrorDetails ? "Less" : "Details"}
-              </button>
             </div>
           )}
 
