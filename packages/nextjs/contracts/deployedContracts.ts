@@ -7,7 +7,7 @@ import { GenericContractsDeclaration } from "~~/utils/scaffold-eth/contract";
 const deployedContracts = {
   11155111: {
     EntewardProject: {
-      address: "0x4D3ADCDDA510F9556c10491D8D253b2aa5eE9d19",
+      address: "0xa191D5B7a2A582A98f1C3207B8c99fC2aed442AA",
       abi: [
         {
           inputs: [

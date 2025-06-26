@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import Image from "next/image";
+import { useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import {
   ArrowUpTrayIcon,
   CalendarDaysIcon,
@@ -24,9 +26,33 @@ interface ProjectProposalFormProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (metadataLink: string) => void;
+  contractAddress: string;
 }
 
-const ProjectProposalForm: React.FC<ProjectProposalFormProps> = ({ isOpen, onClose, onSubmit }) => {
+// ABI for the safeMint function
+const CONTRACT_ABI = [
+  {
+    inputs: [
+      {
+        internalType: "string",
+        name: "proposalURI",
+        type: "string",
+      },
+    ],
+    name: "safeMint",
+    outputs: [
+      {
+        internalType: "uint256",
+        name: "tokenId",
+        type: "uint256",
+      },
+    ],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+] as const;
+
+const ProjectProposalForm: React.FC<ProjectProposalFormProps> = ({ isOpen, onClose, onSubmit, contractAddress }) => {
   // Form state
   const [formData, setFormData] = useState<ProjectProposalMetadata>({
     proposalDate: "",
@@ -45,9 +71,17 @@ const ProjectProposalForm: React.FC<ProjectProposalFormProps> = ({ isOpen, onClo
   // Loading states
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<string>("");
+  const [uploadProgress, setUploadProgress] = useState<{ step: number; total: number }>({ step: 0, total: 6 });
 
   // Error states
-  const [errors, setErrors] = useState<Partial<ProjectProposalMetadata & { imageFile: string; pdfFile: string }>>({});
+  const [errors, setErrors] = useState<
+    Partial<ProjectProposalMetadata & { imageFile: string; pdfFile: string; general: string }>
+  >({});
+  const [showErrorDetails, setShowErrorDetails] = useState(false);
+
+  // Blockchain interaction hooks
+  const { writeContract, data: hash, error: writeError, isPending } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash });
 
   // Handle input changes
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -130,18 +164,65 @@ const ProjectProposalForm: React.FC<ProjectProposalFormProps> = ({ isOpen, onClo
     }
   };
 
-  // Upload file to IPFS
-  const uploadToIPFS = async (file: File): Promise<string> => {
-    try {
-      const urlRequest = await fetch("/api/url");
-      const urlResponse = await urlRequest.json();
-      const upload = await pinata.upload.public.file(file).url(urlResponse.url);
-      const fileUrl = await pinata.gateways.public.convert(upload.cid);
-      return fileUrl;
-    } catch (error) {
-      console.error("Error uploading to IPFS:", error);
-      throw new Error("Failed to upload file to IPFS");
+  // Upload file to IPFS with retry logic
+  const uploadToIPFS = async (file: File, retries = 3): Promise<string> => {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        // Validate environment
+        if (!process.env.NEXT_PUBLIC_PINATA_GATEWAY) {
+          throw new Error("Pinata gateway not configured. Please check environment variables.");
+        }
+
+        const urlRequest = await fetch("/api/url", {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+        });
+
+        if (!urlRequest.ok) {
+          throw new Error(`Failed to get upload URL: ${urlRequest.status} ${urlRequest.statusText}`);
+        }
+
+        const urlResponse = await urlRequest.json();
+
+        if (!urlResponse.url) {
+          throw new Error("Invalid upload URL response from server");
+        }
+
+        const upload = await pinata.upload.public.file(file).url(urlResponse.url);
+
+        if (!upload.cid) {
+          throw new Error("Failed to get CID from Pinata upload");
+        }
+
+        const fileUrl = await pinata.gateways.public.convert(upload.cid);
+
+        if (!fileUrl) {
+          throw new Error("Failed to convert CID to gateway URL");
+        }
+
+        return fileUrl;
+      } catch (error) {
+        console.error(`IPFS upload attempt ${attempt} failed:`, error);
+
+        if (attempt === retries) {
+          if (error instanceof Error) {
+            if (error.message.includes("NetworkError") || error.message.includes("fetch")) {
+              throw new Error(`Network error during file upload. Please check your connection and try again.`);
+            } else if (error.message.includes("413") || error.message.includes("too large")) {
+              throw new Error(`File is too large for upload. Please use a smaller file.`);
+            } else {
+              throw new Error(`Upload failed: ${error.message}`);
+            }
+          } else {
+            throw new Error("Unknown error occurred during file upload");
+          }
+        }
+
+        // Wait before retry (exponential backoff)
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+      }
     }
+    throw new Error("Upload failed after multiple attempts");
   };
 
   // Upload metadata to IPFS
@@ -222,76 +303,138 @@ const ProjectProposalForm: React.FC<ProjectProposalFormProps> = ({ isOpen, onClo
     return Object.keys(newErrors).length === 0;
   };
 
-  // Handle form submission with automated uploads
+  // Handle form submission with comprehensive error handling
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!validateForm()) return;
 
     setIsSubmitting(true);
+    setErrors(prev => ({ ...prev, general: "" }));
+    setUploadProgress({ step: 0, total: 6 });
 
     try {
+      // Validate contract address
+      if (!contractAddress || !/^0x[a-fA-F0-9]{40}$/.test(contractAddress)) {
+        throw new Error("Invalid contract address. Please contact your administrator.");
+      }
+
       let imageUrl = "";
       let pdfUrl = "";
 
-      // Upload image if present
+      // Step 1: Upload image
       if (imageFile) {
-        setUploadStatus("Uploading image...");
+        setUploadStatus("Uploading image to IPFS...");
+        setUploadProgress({ step: 1, total: 6 });
         imageUrl = await uploadToIPFS(imageFile);
       }
 
-      // Upload PDF if present
+      // Step 2: Upload PDF
       if (pdfFile) {
-        setUploadStatus("Uploading proposal PDF...");
+        setUploadStatus("Uploading proposal PDF to IPFS...");
+        setUploadProgress({ step: 2, total: 6 });
         pdfUrl = await uploadToIPFS(pdfFile);
       }
 
-      // Prepare final metadata
+      // Step 3: Prepare metadata
+      setUploadStatus("Preparing project metadata...");
+      setUploadProgress({ step: 3, total: 6 });
+
       const finalMetadata = {
         ...formData,
         proposalImage: imageUrl,
         proposalPDF: pdfUrl,
+        timestamp: new Date().toISOString(),
+        version: "1.0",
       };
 
-      // Upload metadata to IPFS
-      setUploadStatus("Uploading project metadata...");
+      // Step 4: Upload metadata
+      setUploadStatus("Uploading project metadata to IPFS...");
+      setUploadProgress({ step: 4, total: 6 });
       const metadataUrl = await uploadMetadata(finalMetadata);
 
       console.log("Project Proposal Metadata IPFS Link:", metadataUrl);
 
-      setUploadStatus("Finalizing submission...");
+      // Step 5: Mint NFT
+      setUploadStatus("Submitting to blockchain...");
+      setUploadProgress({ step: 5, total: 6 });
 
-      // Call the onSubmit callback
-      onSubmit(metadataUrl);
-
-      // Reset form
-      setFormData({
-        proposalDate: "",
-        proposalImage: "",
-        title: "",
-        description: "",
-        estimatedCost: "",
-        proposalPDF: "",
+      await writeContract({
+        address: contractAddress as `0x${string}`,
+        abi: CONTRACT_ABI,
+        functionName: "safeMint",
+        args: [metadataUrl],
       });
-      setImageFile(null);
-      setPdfFile(null);
-      setImagePreview("");
-
-      // Close modal
-      onClose();
     } catch (error) {
       console.error("Submission error:", error);
-      alert("Failed to submit proposal. Please try again.");
-    } finally {
+
+      let errorMessage = "Failed to submit proposal. Please try again.";
+
+      if (error instanceof Error) {
+        if (error.message.includes("User rejected") || error.message.includes("rejected")) {
+          errorMessage = "Transaction was rejected. Please try again and approve the transaction.";
+        } else if (error.message.includes("insufficient funds")) {
+          errorMessage = "Insufficient funds to complete the transaction. Please check your wallet balance.";
+        } else if (error.message.includes("network") || error.message.includes("Network")) {
+          errorMessage = "Network error. Please check your connection and try again.";
+        } else if (error.message.includes("contract")) {
+          errorMessage = "Smart contract error. Please contact your administrator.";
+        } else {
+          errorMessage = error.message;
+        }
+      }
+
+      setErrors(prev => ({ ...prev, general: errorMessage }));
       setIsSubmitting(false);
       setUploadStatus("");
+      setUploadProgress({ step: 0, total: 6 });
     }
   };
 
-  // Reset form when modal closes
-  const handleClose = () => {
-    if (isSubmitting) return;
+  // Handle successful transaction
+  useEffect(() => {
+    if (isConfirmed) {
+      setUploadStatus("Project successfully created!");
+      setUploadProgress({ step: 6, total: 6 });
 
+      // Call the onSubmit callback
+      onSubmit("Project created successfully!");
+
+      // Reset form after success
+      setTimeout(() => {
+        resetForm();
+        onClose();
+        setIsSubmitting(false);
+        setUploadStatus("");
+        setUploadProgress({ step: 0, total: 6 });
+      }, 2000);
+    }
+  }, [isConfirmed, onSubmit, onClose]);
+
+  // Handle transaction error
+  useEffect(() => {
+    if (writeError) {
+      console.error("Transaction error:", writeError);
+
+      let errorMessage = "Failed to create project on blockchain.";
+
+      if (writeError.message.includes("User rejected") || writeError.message.includes("rejected")) {
+        errorMessage = "Transaction was rejected. Please try again and approve the transaction.";
+      } else if (writeError.message.includes("insufficient funds")) {
+        errorMessage = "Insufficient funds to complete the transaction.";
+      } else if (writeError.message.includes("network")) {
+        errorMessage = "Network error. Please check your connection and try again.";
+      }
+
+      setErrors(prev => ({ ...prev, general: errorMessage }));
+      setIsSubmitting(false);
+      setUploadStatus("");
+      setUploadProgress({ step: 0, total: 6 });
+    }
+  }, [writeError]);
+
+  // Reset form function
+  const resetForm = () => {
     setFormData({
       proposalDate: "",
       proposalImage: "",
@@ -304,11 +447,24 @@ const ProjectProposalForm: React.FC<ProjectProposalFormProps> = ({ isOpen, onClo
     setPdfFile(null);
     setImagePreview("");
     setErrors({});
+    setUploadProgress({ step: 0, total: 6 });
+  };
+
+  // Reset form when modal closes
+  const handleClose = () => {
+    if (isProcessing) {
+      const confirmClose = window.confirm("Are you sure you want to close? Your progress will be lost.");
+      if (!confirmClose) return;
+    }
+
+    resetForm();
     setUploadStatus("");
     onClose();
   };
 
   if (!isOpen) return null;
+
+  const isProcessing = isSubmitting || isPending || isConfirming;
 
   return (
     <div className="modal modal-open">
@@ -318,7 +474,7 @@ const ProjectProposalForm: React.FC<ProjectProposalFormProps> = ({ isOpen, onClo
           <h3 className="text-lg font-bold">Create Project Proposal</h3>
           <button
             onClick={handleClose}
-            disabled={isSubmitting}
+            disabled={isProcessing}
             className="btn btn-sm btn-circle btn-ghost disabled:opacity-50"
           >
             <XMarkIcon className="h-5 w-5" />
@@ -335,7 +491,7 @@ const ProjectProposalForm: React.FC<ProjectProposalFormProps> = ({ isOpen, onClo
               name="title"
               value={formData.title}
               onChange={handleInputChange}
-              disabled={isSubmitting}
+              disabled={isProcessing}
               className={`input input-bordered w-full ${errors.title ? "input-error" : ""}`}
               placeholder="Enter project title"
               maxLength={100}
@@ -354,7 +510,7 @@ const ProjectProposalForm: React.FC<ProjectProposalFormProps> = ({ isOpen, onClo
               name="description"
               value={formData.description}
               onChange={handleInputChange}
-              disabled={isSubmitting}
+              disabled={isProcessing}
               rows={4}
               className={`textarea textarea-bordered w-full ${errors.description ? "textarea-error" : ""}`}
               placeholder="Describe your project proposal in detail"
@@ -378,7 +534,7 @@ const ProjectProposalForm: React.FC<ProjectProposalFormProps> = ({ isOpen, onClo
               name="proposalDate"
               value={formData.proposalDate}
               onChange={handleInputChange}
-              disabled={isSubmitting}
+              disabled={isProcessing}
               className={`input input-bordered w-full ${errors.proposalDate ? "input-error" : ""}`}
             />
             <div className="label">
@@ -399,7 +555,7 @@ const ProjectProposalForm: React.FC<ProjectProposalFormProps> = ({ isOpen, onClo
               name="estimatedCost"
               value={formData.estimatedCost}
               onChange={handleInputChange}
-              disabled={isSubmitting}
+              disabled={isProcessing}
               className={`input input-bordered w-full ${errors.estimatedCost ? "input-error" : ""}`}
               placeholder="Enter estimated cost"
               min="0"
@@ -422,7 +578,7 @@ const ProjectProposalForm: React.FC<ProjectProposalFormProps> = ({ isOpen, onClo
               type="file"
               accept="image/*"
               onChange={handleImageChange}
-              disabled={isSubmitting}
+              disabled={isProcessing}
               className={`file-input file-input-bordered w-full ${errors.imageFile ? "file-input-error" : ""}`}
             />
             <div className="label">
@@ -433,7 +589,9 @@ const ProjectProposalForm: React.FC<ProjectProposalFormProps> = ({ isOpen, onClo
 
             {imagePreview && (
               <div className="mt-3">
-                <img
+                <Image
+                  height="256"
+                  width="256"
                   src={imagePreview}
                   alt="Preview"
                   className="w-32 h-32 object-cover rounded border-neutral-300 border-2"
@@ -452,7 +610,7 @@ const ProjectProposalForm: React.FC<ProjectProposalFormProps> = ({ isOpen, onClo
               type="file"
               accept=".pdf"
               onChange={handlePDFChange}
-              disabled={isSubmitting}
+              disabled={isProcessing}
               className={`file-input file-input-bordered w-full ${errors.pdfFile ? "file-input-error" : ""}`}
             />
             <div className="label">
@@ -468,24 +626,65 @@ const ProjectProposalForm: React.FC<ProjectProposalFormProps> = ({ isOpen, onClo
             )}
           </fieldset>
 
-          {/* Upload Status */}
+          {/* General Error Display */}
+          {errors.general && (
+            <div className="alert alert-error">
+              <svg className="w-6 h-6 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
+                />
+              </svg>
+              <div>
+                <h3 className="font-bold">Error</h3>
+                <div className="text-xs">{errors.general}</div>
+              </div>
+              <button className="btn btn-sm btn-ghost" onClick={() => setShowErrorDetails(!showErrorDetails)}>
+                {showErrorDetails ? "Less" : "Details"}
+              </button>
+            </div>
+          )}
+
+          {/* Upload Status with Progress */}
           {uploadStatus && (
             <div className="alert alert-info">
               <span className="loading loading-spinner loading-sm"></span>
-              <span>{uploadStatus}</span>
+              <div className="flex-1">
+                <div className="flex justify-between items-center mb-1">
+                  <span>{uploadStatus}</span>
+                  <span className="text-xs">
+                    {uploadProgress.step}/{uploadProgress.total}
+                  </span>
+                </div>
+                <progress
+                  className="progress progress-info w-full"
+                  value={uploadProgress.step}
+                  max={uploadProgress.total}
+                ></progress>
+              </div>
+            </div>
+          )}
+
+          {/* Blockchain Status */}
+          {hash && (
+            <div className="alert alert-info">
+              <span className="loading loading-spinner loading-sm"></span>
+              <span>Transaction Hash: {hash}</span>
             </div>
           )}
 
           {/* Submit Buttons */}
           <div className="modal-action">
-            <button type="button" onClick={handleClose} disabled={isSubmitting} className="btn btn-ghost">
+            <button type="button" onClick={handleClose} disabled={isProcessing} className="btn btn-ghost">
               Cancel
             </button>
-            <button type="submit" disabled={isSubmitting} className="btn btn-primary">
-              {isSubmitting ? (
+            <button type="submit" disabled={isProcessing} className="btn btn-primary">
+              {isProcessing ? (
                 <>
                   <span className="loading loading-spinner loading-sm"></span>
-                  Processing...
+                  {isPending ? "Confirming..." : isConfirming ? "Minting..." : "Processing..."}
                 </>
               ) : (
                 <>

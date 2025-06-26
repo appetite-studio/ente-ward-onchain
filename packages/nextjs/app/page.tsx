@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import AllProjects from "./_components/AllProjects";
 import CouncillorProfile from "./_components/CoucillorProfile";
 import LoginPage from "./_components/LoginPage";
 import NotAuthorized from "./_components/NotAuthorized";
@@ -47,34 +48,105 @@ const Home: NextPage = () => {
   const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isProposalFormOpen, setIsProposalFormOpen] = useState(false);
+  const [refreshProjects, setRefreshProjects] = useState(0);
+  const [retryCount, setRetryCount] = useState(0);
 
-  const fetchCouncillorData = async (walletAddress: string) => {
-    setIsLoading(true);
-    setError(null);
+  const fetchCouncillorData = async (walletAddress: string, isRetry = false) => {
+    if (!isRetry) {
+      setIsLoading(true);
+      setError(null);
+    }
 
     try {
+      // Validate environment variables
+      if (!process.env.NEXT_PUBLIC_DIRECTUS_BASE_URL) {
+        throw new Error("Directus API URL is not configured. Please check your environment variables.");
+      }
+
+      // Validate wallet address format
+      if (!walletAddress || !/^0x[a-fA-F0-9]{40}$/.test(walletAddress)) {
+        throw new Error("Invalid wallet address format.");
+      }
+
       const directusCouncillorAPI = `${process.env.NEXT_PUBLIC_DIRECTUS_BASE_URL}/items/councilor_details?filter[wallet_address][_eq]=${walletAddress}&fields=*,ward.*,ward.muncipality.*`;
 
-      const response = await fetch(directusCouncillorAPI);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
+      const response = await fetch(directusCouncillorAPI, {
+        signal: controller.signal,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        if (response.status === 404) {
+          throw new Error("Councillor data not found. Please ensure your wallet is registered.");
+        } else if (response.status >= 500) {
+          throw new Error("Server error. Please try again later.");
+        } else if (response.status === 403) {
+          throw new Error("Access denied. Please check your permissions.");
+        } else {
+          throw new Error(`API error: ${response.status} ${response.statusText}`);
+        }
       }
 
       const result: DirectusResponse = await response.json();
 
-      if (result.data && result.data.length > 0) {
-        setCouncillorData(result.data[0]);
-        setIsAuthorized(true);
-      } else {
+      if (!result.data || !Array.isArray(result.data)) {
+        throw new Error("Invalid response format from server.");
+      }
+
+      if (result.data.length === 0) {
         setIsAuthorized(false);
+        setError("Your wallet address is not registered as a councillor. Please contact your administrator.");
+      } else {
+        const councillor = result.data[0];
+
+        // Validate required fields
+        if (!councillor.ward?.contractAddress) {
+          throw new Error("Contract address not configured for your ward. Please contact your administrator.");
+        }
+
+        if (!/^0x[a-fA-F0-9]{40}$/.test(councillor.ward.contractAddress)) {
+          throw new Error("Invalid contract address format in database. Please contact your administrator.");
+        }
+
+        setCouncillorData(councillor);
+        setIsAuthorized(true);
+        setRetryCount(0); // Reset retry count on success
       }
     } catch (err) {
       console.error("Error fetching councillor data:", err);
-      setError(err instanceof Error ? err.message : "Failed to fetch councillor data");
+
+      let errorMessage = "Failed to load councillor data.";
+
+      if (err instanceof Error) {
+        if (err.name === "AbortError") {
+          errorMessage = "Request timed out. Please check your internet connection and try again.";
+        } else if (err.message.includes("NetworkError") || err.message.includes("fetch")) {
+          errorMessage = "Network error. Please check your internet connection and try again.";
+        } else {
+          errorMessage = err.message;
+        }
+      }
+
+      setError(errorMessage);
       setIsAuthorized(false);
     } finally {
-      setIsLoading(false);
+      if (!isRetry) {
+        setIsLoading(false);
+      }
+    }
+  };
+
+  const handleRetry = () => {
+    if (connectedAddress) {
+      setRetryCount(prev => prev + 1);
+      fetchCouncillorData(connectedAddress, true);
     }
   };
 
@@ -82,13 +154,16 @@ const Home: NextPage = () => {
     setIsProposalFormOpen(true);
   };
 
-  const handleProposalSubmit = (metadataLink: string) => {
-    console.log("Project Proposal Metadata IPFS Link:", metadataLink);
-    // You can add additional logic here, such as:
-    // - Store the proposal in your database
-    // - Show a success notification
-    // - Refresh the councillor's project list
-    alert("Project proposal submitted successfully! Check console for IPFS link.");
+  const handleProposalSubmit = (result: string) => {
+    console.log("Project proposal result:", result);
+    // Trigger refresh of projects list
+    setRefreshProjects(prev => prev + 1);
+
+    if (result.includes("successfully")) {
+      // Show success notification
+      // You can integrate with a toast library here
+      console.log("✅ Project created successfully!");
+    }
   };
 
   useEffect(() => {
@@ -112,19 +187,59 @@ const Home: NextPage = () => {
     return <LoadingSpinner message="Loading..." />;
   }
 
-  // Error state
+  // Error state with retry functionality
   if (error) {
     return (
-      <div className="flex items-center justify-center flex-1">
-        <div className="text-center p-6 bg-red-50 rounded-lg border border-red-200">
-          <h2 className="text-red-800 text-lg font-semibold mb-2">Error Loading Data</h2>
-          <p className="text-red-600 mb-4">{error}</p>
-          <button
-            onClick={() => connectedAddress && fetchCouncillorData(connectedAddress)}
-            className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
-          >
-            Retry
-          </button>
+      <div className="flex items-center justify-center flex-1 p-4">
+        <div className="max-w-md w-full">
+          <div className="text-center p-6 bg-error/10 rounded-lg border border-error/20">
+            <div className="w-16 h-16 mx-auto mb-4 bg-error/20 rounded-full flex items-center justify-center">
+              <svg className="w-8 h-8 text-error" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
+                />
+              </svg>
+            </div>
+            <h2 className="text-error text-lg font-semibold mb-3">Unable to Load Data</h2>
+            <p className="text-error/80 mb-6 text-sm leading-relaxed">{error}</p>
+
+            <div className="space-y-3">
+              <button onClick={handleRetry} disabled={isLoading} className="btn btn-error btn-sm w-full">
+                {isLoading ? (
+                  <>
+                    <span className="loading loading-spinner loading-sm"></span>
+                    Retrying...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                      />
+                    </svg>
+                    Try Again
+                  </>
+                )}
+              </button>
+
+              {retryCount > 2 && (
+                <div className="text-xs text-base-content/60 p-3 bg-base-200 rounded">
+                  <p className="font-medium mb-1">Still having issues?</p>
+                  <ul className="space-y-1 text-left">
+                    <li>• Check your internet connection</li>
+                    <li>• Verify your wallet is connected</li>
+                    <li>• Contact your administrator</li>
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -145,13 +260,16 @@ const Home: NextPage = () => {
 
     return (
       <>
-        <div className="grid lg:grid-cols-2 flex-1">
+        <div className="grid lg:grid-cols-2 flex-1 gap-6">
           <CouncillorProfile
             councillorName={councillorData.councilorName}
             councillorImage={councillorImageUrl}
             designation={designation}
+            contractAddress={councillorData.ward.contractAddress}
             onAddProject={handleAddProject}
           />
+
+          <AllProjects contractAddress={councillorData.ward.contractAddress} refreshTrigger={refreshProjects} />
         </div>
 
         {/* Project Proposal Form Modal */}
@@ -159,6 +277,7 @@ const Home: NextPage = () => {
           isOpen={isProposalFormOpen}
           onClose={() => setIsProposalFormOpen(false)}
           onSubmit={handleProposalSubmit}
+          contractAddress={councillorData.ward.contractAddress}
         />
       </>
     );
